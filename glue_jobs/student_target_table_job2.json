@@ -1,0 +1,40 @@
+{
+  "name" : "student_target_table_job2",
+  "jobMode" : "VISUAL",
+  "description" : "",
+  "role" : "arn:aws:iam::971422715416:role/service-role/AWSGlueServiceRole-S3",
+  "executionProperty" : {
+    "maxConcurrentRuns" : 1
+  },
+  "command" : {
+    "name" : "glueetl",
+    "scriptLocation" : "s3://aws-glue-assets-971422715416-eu-north-1/scripts/student_target_table_job2.py",
+    "pythonVersion" : "3"
+  },
+  "defaultArguments" : {
+    "--enable-metrics" : "true",
+    "--enable-spark-ui" : "true",
+    "--spark-event-logs-path" : "s3://aws-glue-assets-971422715416-eu-north-1/sparkHistoryLogs/",
+    "--enable-job-insights" : "false",
+    "--enable-observability-metrics" : "true",
+    "--enable-glue-datacatalog" : "true",
+    "--enable-continuous-cloudwatch-log" : "true",
+    "--job-bookmark-option" : "job-bookmark-disable",
+    "--job-language" : "python",
+    "--TempDir" : "s3://aws-glue-assets-971422715416-eu-north-1/temporary/"
+  },
+  "maxRetries" : 0,
+  "allocatedCapacity" : 10,
+  "timeout" : 2880,
+  "maxCapacity" : 10.0,
+  "glueVersion" : "4.0",
+  "numberOfWorkers" : 10,
+  "workerType" : "G.1X",
+  "codeGenConfigurationNodes" : "{\"node-1726328632516\":{\"SparkSQL\":{\"Inputs\":[\"node-1726328590065\"],\"Name\":\"SQL Query\",\"SqlAliases\":[{\"Alias\":\"myDataSource\",\"From\":\"node-1726328590065\"}],\"SqlQuery\":\"select * from myDataSource\\nwhere age>29;\"}},\"node-1726328590065\":{\"S3ParquetSource\":{\"AdditionalOptions\":{\"EnableSamplePath\":false,\"SamplePath\":\"s3://aadd1/intermediate/student_intermediate/run-1726328325195-part-block-0-r-00000-snappy.parquet\"},\"Exclusions\":[],\"Name\":\"Amazon S3\",\"OutputSchemas\":[{\"Columns\":[{\"Name\":\"fname\",\"Type\":\"string\"},{\"Name\":\"uid\",\"Type\":\"bigint\"},{\"Name\":\"age\",\"Type\":\"bigint\"},{\"Name\":\"city\",\"Type\":\"string\"},{\"Name\":\"country\",\"Type\":\"string\"}]}],\"Paths\":[\"s3://aadd1/intermediate/student_intermediate/\"],\"Recurse\":true}},\"node-1726328725499\":{\"S3GlueParquetTarget\":{\"AutoDataQuality\":{\"IsEnabled\":false},\"Compression\":\"snappy\",\"Inputs\":[\"node-1726328632516\"],\"Name\":\"Amazon S3\",\"PartitionKeys\":[],\"Path\":\"s3://aadd1/target/target_student/\",\"SchemaChangePolicy\":{\"Database\":\"target_database\",\"EnableUpdateCatalog\":true,\"Table\":\"student_target_tbl\",\"UpdateBehavior\":\"UPDATE_IN_DATABASE\"}}}}",
+  "sourceControlDetails" : {
+    "provider" : "GITHUB",
+    "repository" : "test",
+    "branch" : "main",
+    "folder" : "glue_jobs"
+  }
+}
