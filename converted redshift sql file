@@ -1,0 +1,73 @@
+-- Drop temp table if exists
+DROP TABLE IF EXISTS #DimClaimEventStatus;
+
+-- Create a temporary snapshot of DimClaimEventStatus (as needed)
+CREATE TEMP TABLE #DimClaimEventStatus AS
+SELECT *
+FROM dimclaimeventstatus;
+
+-- Insert data into DimClaimEventStatusMapping (Redshift version)
+INSERT INTO el_eds_def.dimclaimeventstatusmapping (
+    source_app_code,
+    source_data_set,
+    dml_ind,
+    record_created_date,
+    record_updated_date,
+    record_created_by,
+    record_updated_by,
+    record_eff_from_date,
+    record_eff_to_date,
+    active_record_ind,
+    checksum,
+    claimeventstatusmapping_uuid,
+    business_key,
+    claimeventstatusmapping_id,
+    ref_claimeventstatus_id,
+    claimeventstatus_code,
+    claimeventstatus_description
+)
+SELECT
+    'LIV2' AS source_app_code,
+    'LIV2' AS source_data_set,
+    'I' AS dml_ind,
+    GETDATE() AS record_created_date,
+    GETDATE() AS record_updated_date,
+    'EDS' AS record_created_by,
+    'EDS' AS record_updated_by,
+    GETDATE() AS record_eff_from_date,
+    CAST('9999-12-31 00:00:00.000000' AS TIMESTAMP) AS record_eff_to_date,
+    'Y' AS active_record_ind,
+
+    -- Checksum for row-level data validation
+    SHA2(
+        COALESCE(CAST(ROW_NUMBER() OVER (ORDER BY a.STR_DESC) AS VARCHAR), 'null') ||
+        COALESCE(CAST(b.claimeventstatus_id AS VARCHAR), 'null') ||
+        COALESCE(CAST(a.STR_CODE AS VARCHAR), 'null') ||
+        COALESCE(UPPER(a.STR_DESC), 'null') ||
+        'LIV2',
+        256
+    ) AS checksum,
+
+    -- UUID generation
+    SHA2('LIV2' || '~' || CAST(ROW_NUMBER() OVER (ORDER BY a.STR_DESC) AS VARCHAR), 256)
+    AS claimeventstatusmapping_uuid,
+
+    -- Business key
+    'LIV2' || '~' || CAST(ROW_NUMBER() OVER (ORDER BY a.STR_DESC) AS VARCHAR)
+    AS business_key,
+
+    -- Mapping ID
+    ROW_NUMBER() OVER (ORDER BY a.STR_DESC) AS claimeventstatusmapping_id,
+
+    -- Foreign key mapping using CASE for 'CANCELLATION' mapping to 'CANCELLED'
+    b.claimeventstatus_id AS ref_claimeventstatus_id,
+
+    -- Code and Description
+    a.STR_CODE AS claimeventstatus_code,
+    UPPER(a.STR_DESC) AS claimeventstatus_description
+
+FROM rsrpt.liv2.v_code_desc a
+LEFT JOIN #DimClaimEventStatus b
+    ON UPPER(b.claimeventstatus_description) = 
+        UPPER(CASE WHEN a.STR_DESC = 'CANCELLATION' THEN 'CANCELLED' ELSE a.STR_DESC END)
+WHERE a.ORG_TABLE = 'T_CASE_STATUS';
