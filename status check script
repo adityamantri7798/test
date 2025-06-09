@@ -1,0 +1,50 @@
+-- LIV2 Insert Logging
+RAISE NOTICE 'DimClaimEventStatusMapping LIV2 Insert';
+
+-- Step 1: Get current max ID
+WITH max_id_cte AS (
+    SELECT COALESCE(MAX("ClaimEventStatusMappingSeqID"), 0) AS max_id
+    FROM el_eds_def.DimClaimEventStatusMapping
+),
+
+-- Step 2: Prepare the records to insert
+records_to_insert AS (
+    SELECT 
+        max_id + ROW_NUMBER() OVER (ORDER BY a.STR_DESC) AS ClaimEventStatusMappingSeqID,
+        (
+            SELECT ClaimEventStatusSeqID
+            FROM el_eds_def.DimClaimEventStatus 
+            WHERE ClaimEventStatusDescription = 
+                  CASE WHEN a.STR_DESC = 'CANCELLATION' THEN 'CANCELLED' ELSE a.STR_DESC END
+              AND ClaimEventStatusSeqID <> -1
+            LIMIT 1
+        ) AS RefClaimEventStatusSeqID,
+        a.STR_CODE AS ClaimEventStatusCode,
+        UPPER(a.STR_DESC) AS ClaimEventStatusDescription,
+        'LIV2' AS AppSource,
+        GETDATE() AS RecInsertDate,
+        GETDATE() AS RecUpdateDate
+    FROM RSRPT.LIV2.V_CODE_DESC a, max_id_cte
+    WHERE a.ORG_TABLE = 'T_CASE_STATUS'
+)
+
+-- Step 3: Perform the insert
+INSERT INTO el_eds_def.DimClaimEventStatusMapping
+(
+    ClaimEventStatusMappingSeqID,
+    RefClaimEventStatusSeqID,
+    ClaimEventStatusCode,
+    ClaimEventStatusDescription,
+    AppSource,
+    RecInsertDate,
+    RecUpdateDate
+)
+SELECT 
+    ClaimEventStatusMappingSeqID,
+    RefClaimEventStatusSeqID,
+    ClaimEventStatusCode,
+    ClaimEventStatusDescription,
+    AppSource,
+    RecInsertDate,
+    RecUpdateDate
+FROM records_to_insert;
