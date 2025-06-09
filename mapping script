@@ -1,0 +1,57 @@
+-- Log
+RAISE NOTICE 'DimClaimEventStatusMapping Insert';
+
+-- Delete existing data
+DELETE FROM el_eds_def.DimClaimEventStatusMapping WHERE 1=1;
+
+-- GIV3 Insert
+RAISE NOTICE 'DimClaimEventStatusMapping GIV3 Insert';
+
+INSERT INTO el_eds_def.DimClaimEventStatusMapping 
+(ClaimEventStatusMappingSeqID, RefClaimEventStatusSeqID, ClaimEventStatusCode, ClaimEventStatusDescription, AppSource, RecInsertDate, RecUpdateDate)
+VALUES 
+(1, 1, '0', 'CLOSED', 'GIV3', GETDATE(), GETDATE()),
+(2, 2, '1', 'NEW', 'GIV3', GETDATE(), GETDATE()),
+(3, 3, '2', 'OPEN', 'GIV3', GETDATE(), GETDATE()),
+(4, 4, '3', 'REOPEN', 'GIV3', GETDATE(), GETDATE());
+
+-- RDS Insert
+RAISE NOTICE 'DimClaimEventStatusMapping RDS Insert';
+
+INSERT INTO el_eds_def.DimClaimEventStatusMapping 
+(ClaimEventStatusMappingSeqID, RefClaimEventStatusSeqID, ClaimEventStatusCode, ClaimEventStatusDescription, AppSource, RecInsertDate, RecUpdateDate)
+VALUES 
+(5, 5, 'cnl', 'Cancelled', 'RDS', GETDATE(), GETDATE()),
+(6, 1, 'cld', 'Closed', 'RDS', GETDATE(), GETDATE()),
+(7, 6, 'bCi', 'In Process', 'RDS', GETDATE(), GETDATE()),
+(8, 7, 'migr', 'Migrated', 'RDS', GETDATE(), GETDATE()),
+(9, 8, 'ntf', 'Notified', 'RDS', GETDATE(), GETDATE()),
+(10, 9, 'j', 'Rejected', 'RDS', GETDATE(), GETDATE()),
+(11, 10, 'susP', 'Suspended', 'RDS', GETDATE(), GETDATE()),
+(12, 11, 'v', 'Void', 'RDS', GETDATE(), GETDATE());
+
+-- DPS Insert
+RAISE NOTICE 'DimClaimEventStatusMapping DPS Insert';
+
+INSERT INTO el_eds_def.DimClaimEventStatusMapping 
+(ClaimEventStatusMappingSeqID, RefClaimEventStatusSeqID, ClaimEventStatusCode, ClaimEventStatusDescription, AppSource, RecInsertDate, RecUpdateDate)
+VALUES 
+(13, 12, '1', 'Pending', 'DPS', GETDATE(), GETDATE()),
+(14, 9, '2', 'Rejected', 'DPS', GETDATE(), GETDATE()),
+(15, 13, '3', 'Settled', 'DPS', GETDATE(), GETDATE()),
+(16, 14, '4', 'Withdrawn', 'DPS', GETDATE(), GETDATE()),
+(17, 4, '5', 'Reopen', 'DPS', GETDATE(), GETDATE()),
+(18, 15, '6', 'Reporting Only', 'DPS', GETDATE(), GETDATE());
+
+-- WBISIS Insert
+RAISE NOTICE 'DimClaimEventStatusMapping WBISIS Insert';
+
+INSERT INTO el_eds_def.DimClaimEventStatusMapping 
+(ClaimEventStatusMappingSeqID, RefClaimEventStatusSeqID, ClaimEventStatusCode, ClaimEventStatusDescription, AppSource, RecInsertDate, RecUpdateDate)
+VALUES 
+(19, 12, '1', 'Pending', 'WBISIS', GETDATE(), GETDATE()),
+(20, 9, '2', 'Rejected', 'WBISIS', GETDATE(), GETDATE()),
+(21, 13, '3', 'Settled', 'WBISIS', GETDATE(), GETDATE()),
+(22, 14, '4', 'Withdrawn', 'WBISIS', GETDATE(), GETDATE()),
+(23, 4, '5', 'Reopen', 'WBISIS', GETDATE(), GETDATE()),
+(24, 15, '6', 'Reporting Only', 'WBISIS', GETDATE(), GETDATE());
