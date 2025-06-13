@@ -1,0 +1,611 @@
+sp fpr pline=
+USE [RSRpt]
+GO
+
+/****** Object:  StoredProcedure [GIV3].[spPlineInsuredDetailInsert]    Script Date: 9/5/2025 11:44:21 am ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE [GIV3].[spPlineInsuredDetailInsert]
+AS
+
+/*-------------------------------------------------------------------------------------------------------------------------
+Description : to populate data for Pline Insured Details tableau data source into PlineInsuredDetail table
+Create Date : 20-08-2019
+Written by:	 Rashmi
+Amendment History :
+CR					Mod Date		By               	Description
+CRQ000000087440     13-03-2020		Rashmi				To add Smoking Status column
+-------------------------------------------------------------------------------------------------------------------------*/
+
+
+SET NOCOUNT ON
+BEGIN
+
+TRUNCATE TABLE RSRpt.GIV3.PlineInsuredDetail;
+
+-- Get Past 3 years policy data
+Select p.PolicyNo
+	, p.ProductCode
+	, p.ProductName
+	, p.PolicyEffectiveDate
+	, p.PolicyExpiryDate
+	, p.PolicyStatusDesc
+	, p.TerminateCodeDesc
+	, p.PremiumWithoutGST
+	, p.IssueDate
+	, p.policyId	
+
+INTO #TempPol
+
+FROM GIV3.bv_policy p
+where p.ProductCateType = 'PLine'
+and DATEDIFF(mm, p.issuedate, GETDATE()) <= 36
+
+CREATE INDEX IX_TempPol_PolId ON #TempPol(policyid)
+
+
+-- Get customer data
+Select Nric
+	, indi.name
+	, indi.DateOfBirth
+	, indi.Gender
+	, indi.MaritalStatus
+	, Indi.NationalityDesc
+	, indi.RaceDesc
+	, indi.Address1
+	, indi.Address2
+	, indi.Address3
+	, indi.Address4
+	, indi.PostalCode
+	, indi.Address
+	, indi.HomeTel
+	, indi.Mobile
+	, indi.OfficeTel
+	, indi.Email
+	, indi.EmailFlag
+
+INTO #TempIndiv
+FROM GIV3.bv_indivcustomer indi
+WHERE NRIC IS NOT NULL
+
+CREATE INDEX IX_TempIndiv_Nric ON #TempIndiv(Nric)
+
+
+-- Use function to get insured level details
+Select p.PolicyNo [Policy No]
+	, p.ProductCode [Product Code]
+	, p.ProductName [Product Name]
+	, p.PolicyEffectiveDate [Policy Effective Date]
+	, p.PolicyExpiryDate [Policy Expiry Date]
+	, p.PolicyStatusDesc [Policy Status]
+	, p.TerminateCodeDesc [Terminate Status]
+	, p.PremiumWithoutGST [Premium Without GST]
+	, p.IssueDate [Issue Date]	
+	, ins.NoOfChild [No Of Child]
+	, ins.NoOfAdult [No Of Adult]
+	, ins.FamilyType [Family Type]
+	, ins.TravellerType [Traveller Type]
+	, ins.NoOfChildrenTravelinFamily [No Of Children Travel in Family]
+	, ins.PlanType [Plan Type]
+	, ins.CoverType [Cover Type]
+	, ins.NoOfChildPolLevel [No Of Child at Policy Level]
+	, ins.NoOfAdultPolLevel [No of Adult at Policy Level]
+	, ins.NoOfInsuredPolLevel [No of Insured at Policy Level]
+	, ins.NoOfCoverTypePolLevel [No Of Cover Type at Policy Level]
+	
+	, CASE WHEN p.ProductCode = 'GDB' THEN CASE WHEN ins.TransmissionFlag=0 THEN 'N - Not Transmitted' WHEN ins.TransmissionFlag = 1 THEN 'T – Transmitted' END ELSE NULL END  [Transmission Flag]
+	, CASE WHEN p.ProductCode = 'GDB' THEN CASE WHEN ins.WithWaiver=0 THEN 'NO' WHEN ins.WithWaiver=1 THEN 'YES' END ELSE NULL END [With Waiver]
+	, CASE WHEN p.ProductCode = 'GDB' THEN DATEADD(SECOND, CAST(ins.FollowupDate AS BIGINT)/1000, '1970-1-1') ELSE NULL END [FollowUp Date]
+	, ins.Memo	
+	, CASE WHEN p.productCode = 'GPB' THEN CASE WHEN ins.InfectiousDiseaseCoverage=0 THEN 'NO' WHEN ins.InfectiousDiseaseCoverage=1 THEN 'YES' END ELSE NULL END [Infectious Disease Coverage]	
+	, ins.InsuredNRIC [Insured NRIC]
+	, ISNULL(indi.name, ins.InsuredName) [Insured Name]
+	, ins.OccupationClass [Occupation Class]
+	, ins.Occupation [Occupation]
+	, ins.OtherOccupation [Other Occupation]
+	, ins.InsuredDOB [Insured DOB]   --revised to insured level
+	, ins.Gender [Insured Gender]	--revised to insured level
+	, indi.MaritalStatus [Insured Marital Status]
+	, ins.InsuredNationality [Insured Nationality]   --revised to insured level
+	, indi.RaceDesc [Insured Race]
+	, ins.InsuredAddress1 [Insured Address 1] --revised to insured level
+	, ins.InsuredAddress2 [Insured Address 2] --revised to insured level
+	, ins.InsuredAddress3 [Insured Address 3] --revised to insured level
+	, ins.InsuredAddress4 [Insured Address 4] --revised to insured level
+	, ins.InsuredPostalCode [Insured PostalCode] --revised to insured level
+	, ins.[Plan Name]
+	, ins.[InsuredLevel ANP]
+	, ins.RenewalBonus
+	, ins.AgeGroup
+	, indi.Address [Insured Full Address]
+	, indi.HomeTel [Insured HomeTel]
+	, ins.InsuredMobileNo [Insured MobileNo] --revised to insured level
+	, indi.OfficeTel [Insured OfficeTel]
+	, ins.InsuredEmail [Insured Email] --revised to insured level
+	, indi.EmailFlag [Insured EmailFlag] 
+	, ins.SNP [Standard Net Premium]
+	, ins.SGP [Standard Gross Premium]
+	, ins.SmokingStatus [Smoking Status]
+	, RptInsertTime = GETDATE()
+INTO #final
+FROM #TempPol p
+CROSS APPLY GIV3.fnInsuredInfo(p.PolicyId) ins
+LEFT OUTER JOIN #TempIndiv indi ON indi.Nric = ins.InsuredNRIC
+
+
+INSERT INTO RSRpt.GIV3.PlineInsuredDetail
+(
+    [Policy No],
+	[Product Code],
+	[Product Name],
+	[Policy Effective Date],
+	[Policy Expiry Date],
+	[Policy Status],
+	[Terminate Status],
+	[Premium Without GST],
+	[Issue Date],
+	[No Of Child],
+	[No Of Adult],
+	[Family Type],
+	[Traveller Type],
+	[No Of Children Travel in Family],
+	[Plan Type],
+	[Cover Type],
+	[No Of Child at Policy Level],
+	[No of Adult at Policy Level],
+	[No of Insured at Policy Level],
+	[No Of Cover Type at Policy Level],
+	[Transmission Flag],
+	[With Waiver],
+	[FollowUp Date],
+	[Memo],
+	[Infectious Disease Coverage],
+	[Insured NRIC],
+	[Insured Name],
+	[Occupation Class],
+	[Occupation],
+	[Other Occupation],
+	[Insured DOB],
+	[Insured Gender],
+	[Insured Marital Status],
+	[Insured Nationality],
+	[Insured Race],
+	[Insured Address 1],
+	[Insured Address 2],
+	[Insured Address 3],
+	[Insured Address 4],
+	[Insured PostalCode],
+	[Plan Name],
+	[InsuredLevel ANP],
+	[RenewalBonus],
+	[AgeGroup],
+	[Insured Full Address],
+	[Insured HomeTel],
+	[Insured MobileNo],
+	[Insured OfficeTel],
+	[Insured Email],
+	[Insured EmailFlag],
+	[Standard Net Premium],
+	[Standard Gross Premium],
+	[Smoking Status],
+	[RptInsertTime]
+)
+SELECT 
+    [Policy No],
+	[Product Code],
+	[Product Name],
+	[Policy Effective Date],
+	[Policy Expiry Date],
+	[Policy Status],
+	[Terminate Status],
+	[Premium Without GST],
+	[Issue Date],
+	[No Of Child],
+	[No Of Adult],
+	[Family Type],
+	[Traveller Type],
+	[No Of Children Travel in Family],
+	[Plan Type],
+	[Cover Type],
+	[No Of Child at Policy Level],
+	[No of Adult at Policy Level],
+	[No of Insured at Policy Level],
+	[No Of Cover Type at Policy Level],
+	[Transmission Flag],
+	[With Waiver],
+	[FollowUp Date],
+	[Memo],
+	[Infectious Disease Coverage],
+	[Insured NRIC],
+	[Insured Name],
+	[Occupation Class],
+	[Occupation],
+	[Other Occupation],
+	[Insured DOB],
+	[Insured Gender],
+	[Insured Marital Status],
+	[Insured Nationality],
+	[Insured Race],
+	[Insured Address 1],
+	[Insured Address 2],
+	[Insured Address 3],
+	[Insured Address 4],
+	[Insured PostalCode],
+	[Plan Name],
+	[InsuredLevel ANP],
+	[RenewalBonus],
+	[AgeGroup],
+	[Insured Full Address],
+	[Insured HomeTel],
+	[Insured MobileNo],
+	[Insured OfficeTel],
+	[Insured Email],
+	[Insured EmailFlag],
+	[Standard Net Premium],
+	[Standard Gross Premium],
+	[Smoking Status],
+	[RptInsertTime]
+
+FROM #final
+
+
+END
+
+GO
+
+converted script = 
+import sys
+import os
+import json
+import argparse
+from pyspark.sql import SparkSession, SQLContext 
+from pyspark.context import SparkContext
+from pyspark.conf import SparkConf
+from pyspark.sql.types import *
+from datetime import timedelta, datetime
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--config", required=True, help = "Table config to be processed")
+
+args, unknown = parser.parse_known_args()
+args_config = args.config
+conf = json.loads(args_config.replace("'", '"'))
+
+print(f"Data Source: {conf['data_source']}, Target Table: {conf['target_table']}")
+
+# Configure Spark Session for Iceberg
+spark_configs_default = {
+    "spark.sql.autoBroadcastJoinThreshold" : "10485760",
+    "spark.sql.extensions" : "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+    "spark.sql.catalog.glue_catalog.catalog-impl" : "org.apache.iceberg.aws.glue.GlueCatalog",
+    "spark.sql.catalog.glue_catalog.io-impl" : "org.apache.iceberg.aws.s3.S3FileIO",
+    "spark.sql.legacy.parquet.int96RebaseModeInRead" : "CORRECTED",
+    "spark.sql.legacy.parquet.datetimeRebaseModeInRead" : "CORRECTED",
+    "spark.sql.iceberg.handle-timestamp-without-timezone" : "true",
+    "spark.sql.files.ignoreCorruptFiles" : "true",
+    "spark.sql.ansi.enabled" : "false"
+} 
+spark_job_confs = spark_configs_default
+
+# Set spark configurations
+spark_conf = SparkConf().setAll(pairs=spark_job_confs.items())
+
+spark = SparkSession \
+    .builder \
+    .appName(f"tds-rpt-{conf['target_table']}") \
+    .config(conf=spark_conf) \
+    .config(f'spark.sql.catalog.{conf["CATALOG_NAME"]}',"org.apache.iceberg.spark.SparkCatalog") \
+    .config(f'spark.sql.catalog.{conf["CATALOG_NAME"]}.warehouse',f'{conf["WAREHOUSE_PATH"]}') \
+    .getOrCreate()
+
+
+try:
+    # Get past 3 years policy data - break down bv_policy & bv_product
+    spark.sql(f"""
+        SELECT
+            tpg.record_eff_from_date,
+            tpg.record_eff_to_date,
+            tpg.policy_no,
+            tppdt.product_code,
+            tppdt.product_name,
+            tpg.policy_effective_date,
+            tpg.policy_expiry_date,
+            tpg.policy_status_desc,
+            tpg.terminate_code_desc,
+            prem.premium_wo_gst,
+            tpg.issue_date,
+            tpg.policy_id
+        FROM
+            {conf['CATALOG_NAME']}.tl_ebgi_def.tb_t_policy_general_hist tpg
+            LEFT OUTER JOIN {conf['CATALOG_NAME']}.tl_ebgi_def.tb_t_gen_policy_info_hist gpi 
+                ON tpg.policy_id = gpi.policy_id 
+                AND UPPER(gpi.field01) = 'FPL' AND gpi.active_record_ind = 'Y'
+            INNER JOIN {conf['CATALOG_NAME']}.tl_ebgi_def.tb_t_product_general_hist tppdt 
+                ON tpg.product_id = tppdt.master_product_id 
+                AND COALESCE(gpi.sec_product_id, 0) = COALESCE(tppdt.derived_product_id, 0)
+            LEFT OUTER JOIN {conf['CATALOG_NAME']}.tl_ebgi_def.tb_rpt_policypremwogst prem ON prem.policy_id = tpg.policy_id
+        WHERE
+            tpg.policy_status <> '1'
+            AND UPPER(tppdt.product_cate_type) = 'PLINE'
+            AND CAST(months_between(tpg.issue_date, from_utc_timestamp(current_timestamp(), "Asia/Singapore")) AS int) <= 36
+            AND tpg.active_record_ind = 'Y' 
+            AND tppdt.active_record_ind = 'Y'
+    """).createOrReplaceTempView('TempPol')
+
+    # Get customer data - break down bv_indivcustomer
+    spark.sql(f"""
+        SELECT 
+            a.id_number AS nric,
+            a.indi_party_name AS name,
+			a.date_of_birth,
+			a.gender,
+			a.marital_status,
+			a.nationality_desc,
+			a.race_desc,
+			d.address01 AS address1,
+			d.address02 AS address2,
+			d.address03 AS address3,
+			d.address04 AS address4,
+			d.address05 AS postalcode,
+			d.party_address AS address,
+			b.residence_telephone AS home_tel,
+			b.hand_phone AS mobile,
+			b.business_telephone AS office_tel,
+			b.email,
+			b.emal_flag AS email_flag
+        FROM
+            {conf['CATALOG_NAME']}.tl_ebgi_def.tb_t_pty_indi_hist a 
+            INNER JOIN {conf['CATALOG_NAME']}.tl_ebgi_def.tb_t_ptyr_hist c ON a.pty_id = c.pty_id
+            LEFT OUTER JOIN (
+                SELECT
+                    pty_id,
+                    residence_telephone,
+                    hand_phone,
+                    business_telephone,
+                    email,
+                    emal_flag,
+                    active_record_ind,
+                    ROW_NUMBER() OVER (PARTITION BY pty_id ORDER BY update_time DESC) AS rowno
+                FROM 
+                    {conf['CATALOG_NAME']}.tl_ebgi_def.tb_t_pty_other_contact_hist oc
+                ) b ON b.rowno = 1 
+                AND b.pty_id = a.pty_id AND b.active_record_ind = 'Y'
+            LEFT OUTER JOIN {conf['CATALOG_NAME']}.tl_ebgi_def.tb_t_pty_address_hist d ON d.address_id = c.address_id 
+        WHERE
+            a.id_number IS NOT NULL
+            AND c.ptyr_type = 20
+            AND a.active_record_ind = 'Y'
+            AND c.active_record_ind = 'Y'
+            AND d.active_record_ind = 'Y'
+    """).createOrReplaceTempView("TempIndiv")
+    
+    # Use function to get insured level details
+    spark.sql(f"""
+        SELECT
+            p.record_eff_from_date,
+            p.record_eff_to_date,
+            p.policy_no,
+			p.product_code,
+			p.product_name,
+			p.policy_effective_date,
+			p.policy_expiry_date,
+			p.policy_status_desc as policy_status,
+			p.terminate_code_desc as terminate_status,
+			p.premium_wo_gst as premium_without_gst,
+			p.issue_date,
+            ins.no_of_child,
+			ins.no_of_adult,
+			ins.family_type,
+			ins.traveller_type,
+			ins.no_of_children_travel_in_family,
+			ins.plan_type,
+			ins.cover_type,
+			ins.no_of_child_pol_level as no_of_child_at_policy_level,
+			ins.no_of_adult_pol_level as no_of_adult_at_policy_level,
+			ins.no_of_insured_pol_level as no_of_insured_at_policy_level,
+			ins.no_of_cover_type_pol_level as no_of_cover_type_at_policy_level,
+            CASE WHEN UPPER(p.product_code) = 'GDB' THEN 
+                CASE WHEN ins.transmission_flag = 0 THEN 'N - Not Transmitted' 
+                WHEN ins.transmission_flag = 1 THEN 'T – Transmitted' END 
+                ELSE NULL END AS transmission_flag,
+			CASE WHEN UPPER(p.product_code) = 'GDB' THEN 
+                CASE WHEN ins.with_waiver = 0 THEN 'NO' 
+                WHEN ins.with_waiver = 1 THEN 'YES' END 
+                ELSE NULL END AS with_waiver,
+			CASE WHEN UPPER(p.product_code) = 'GDB' THEN 
+                timestamp_millis(CAST(ins.followup_date AS bigint)) -- Calc timestamp from no of milliseconds since UTC epoch
+                ELSE NULL END AS followup_date,
+			ins.memo,
+            CASE WHEN UPPER(p.product_code) = 'GPB' THEN 
+                CASE WHEN ins.infectious_disease_coverage = 0 THEN 'NO' 
+                WHEN ins.infectious_disease_coverage = 1 THEN 'YES' END 
+                ELSE NULL END AS infectious_disease_coverage,
+            ins.insured_nric,
+			COALESCE(indi.name, ins.insured_name) AS insured_name,
+			ins.occupation_class,
+			ins.occupation,
+			ins.other_occupation,
+			ins.insured_dob,
+			ins.gender as insured_gender,
+            indi.marital_status as insured_marital_status,
+			ins.insured_nationality,
+			indi.race_desc as insured_race,
+			ins.insured_address1,
+			ins.insured_address2,
+			ins.insured_address3,
+			ins.insured_address4,
+			ins.insured_postal_code,
+			ins.plan_name,
+			ins.insured_level_anp,
+			ins.renewal_bonus,
+            ins.age_group,
+            indi.address as insured_full_address,
+			indi.home_tel as insured_home_tel,
+			ins.insured_mobile_no as insured_mobile_no,
+			indi.office_tel as insured_office_tel,
+			ins.insured_email,
+			indi.email_flag as insured_email_flag,
+            ins.snp as standard_net_premium,
+			ins.sgp as standard_gross_premium,
+			ins.smoking_status
+        FROM
+            TempPol p
+            INNER JOIN {conf['CATALOG_NAME']}.tl_ebgi_def.tb_rpt_insured_info ins ON p.policy_id = ins.policy_id
+            LEFT OUTER JOIN TempIndiv indi ON indi.nric = ins.insured_nric
+    """).createOrReplaceTempView("final")
+    
+    # Truncate and reload target table
+    spark.sql(f"""
+        TRUNCATE TABLE {conf['CATALOG_NAME']}.tl_ebgi_def.tb_rpt_pline_insured_detail
+    """)
+
+    spark.sql(f"""
+        INSERT INTO {conf['CATALOG_NAME']}.tl_ebgi_def.tb_rpt_pline_insured_detail
+        (
+            source_app_code,
+			dml_ind,
+			record_created_date,
+			record_updated_date,
+			record_created_by,
+			record_updated_by,
+            record_eff_from_date,
+            record_eff_to_date,
+            active_record_ind,
+			change_seq,
+			uuid,
+			business_key,
+            policy_no,
+            product_code,
+            product_name,
+            policy_effective_date,
+            policy_expiry_date,
+            policy_status,
+            terminate_status,
+            premium_without_gst,
+            issue_date,
+            no_of_child,
+            no_of_adult,
+            family_type,
+            traveller_type,
+            no_of_children_travel_in_family,
+            plan_type,
+            cover_type,
+            no_of_child_at_policy_level,
+            no_of_adult_at_policy_level,
+            no_of_insured_at_policy_level,
+            no_of_cover_type_at_policy_level,
+            transmission_flag,
+            with_waiver,
+            followup_date,
+            memo,
+            infectious_disease_coverage,
+            insured_nric,
+            insured_name,
+            occupation_class,
+            occupation,
+            other_occupation,
+            insured_dob,
+            insured_gender,
+            insured_marital_status,
+            insured_nationality,
+            insured_race,
+            insured_address1,
+            insured_address2,
+            insured_address3,
+            insured_address4,
+            insured_postal_code,
+            plan_name,
+            insured_level_anp,
+            renewal_bonus,
+            age_group,
+            insured_full_address,
+            insured_home_tel,
+            insured_mobile_no,
+            insured_office_tel,
+            insured_email,
+            insured_email_flag,
+            standard_net_premium,
+            standard_gross_premium,
+            smoking_status
+        )
+        SELECT DISTINCT
+            'EBGI' AS source_app_code,
+			'I' AS dml_ind ,
+			from_utc_timestamp(current_timestamp(), "Asia/Singapore") AS record_created_date,
+			from_utc_timestamp(current_timestamp(), "Asia/Singapore") AS record_updated_date,
+			'tds_etl' AS record_created_by,
+			'tds_etl' AS record_updated_by,
+            record_eff_from_date,
+            record_eff_to_date,
+            'Y' AS active_record_ind,
+			CAST(-1 as DECIMAL(38,0)) AS change_seq,
+			SHA2('EBGI~' || CAST(policy_no AS string) || '~' || insured_nric, 256) AS uuid,
+			('EBGI~' || CAST(policy_no AS string) || '~' || insured_nric) AS business_key,
+            policy_no,
+            product_code,
+            product_name,
+            policy_effective_date,
+            policy_expiry_date,
+            policy_status,
+            terminate_status,
+            premium_without_gst,
+            issue_date,
+            no_of_child,
+            no_of_adult,
+            family_type,
+            traveller_type,
+            no_of_children_travel_in_family,
+            plan_type,
+            cover_type,
+            no_of_child_at_policy_level,
+            no_of_adult_at_policy_level,
+            no_of_insured_at_policy_level,
+            no_of_cover_type_at_policy_level,
+            transmission_flag,
+            with_waiver,
+            followup_date,
+            memo,
+            infectious_disease_coverage,
+            insured_nric,
+            insured_name,
+            occupation_class,
+            occupation,
+            other_occupation,
+            insured_dob,
+            insured_gender,
+            insured_marital_status,
+            insured_nationality,
+            insured_race,
+            insured_address1,
+            insured_address2,
+            insured_address3,
+            insured_address4,
+            insured_postal_code,
+            plan_name,
+            insured_level_anp,
+            renewal_bonus,
+            age_group,
+            insured_full_address,
+            insured_home_tel,
+            insured_mobile_no,
+            insured_office_tel,
+            insured_email,
+            insured_email_flag,
+            standard_net_premium,
+            standard_gross_premium,
+            smoking_status
+        FROM
+            final
+    """)
+
+except Exception as e:
+    spark.sparkContext._gateway.shutdown_callback_server()
+    spark.stop()
+    raise Exception(f"Spark Exception {e}")
+
+
