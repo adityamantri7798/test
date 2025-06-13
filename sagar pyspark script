@@ -1,0 +1,190 @@
+USE [RSRpt]
+GO
+/****** Object:  StoredProcedure [GIV3].[spFNMthlyGIConsoAgingInsert]    Script Date: 6/6/2025 4:37:09 pm ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+/*---------------------------------------------------------------------------------------------
+Description		 : to insert into RptFNGIConsoAging
+Create Date		 : 18-07-2013
+Written by		 : Lilie
+Amendment History :
+ModDate			By				Description
+29-11-2013		Lilie			amend OSStatus
+19-12-2013		Lilie			SUM(ISNULL(balance,0))
+24-01-2013		Lilie			amend logic in script, only for re-run and LatestSOAMth + 1 month
+13-02-2014		Lilie			set @RunDate = GETDATE()
+---------------------------------------------------------------------------------------------- */
+
+
+ALTER   PROCEDURE [GIV3].[spFNMthlyGIConsoAgingInsert]	
+	(@RunDate Datetime=NULL)
+AS
+BEGIN
+	
+	SET NOCOUNT ON;	
+	Declare @YYYYMM varchar(6)
+	Declare @FirstDayofMth DateTime
+	Declare @LatestSOAMth varchar(6)	
+	
+	SET @RunDate = ISNULL(@RunDate, GETDATE())
+	SET @YYYYMM = CONVERT(Char(6), DATEADD(mm, DATEDIFF(mm, 0, @RunDate), 0) - 1, 112)  --last day of prev. month	
+	SET @FirstDayofMth = DATEADD(mm, DATEDIFF(mm, 0, @RunDate), 0)  
+	
+
+	BEGIN TRY
+
+		BEGIN TRANSACTION
+		
+		Select @LatestSOAMth = MAX(SOAMonth) From GIV3.RptFNGIConsoAging
+
+		IF @YYYYMM = @LatestSOAMth
+		BEGIN
+			--rerun
+			--restore RptFNGIConsoAgingArch into RptFNGIConsoAging			
+			TRUNCATE TABLE GIV3.RptFNGIConsoAging
+
+			INSERT INTO GIV3.RptFNGIConsoAging
+			Select * from GIV3.RptFNGIConsoAgingArch			
+		END
+
+		ELSE IF @YYYYMM + '01' = DATEADD(MONTH, 1, @LatestSOAMth + '01')
+		BEGIN
+			--run for new month
+			--back up data as at prev.month			
+			TRUNCATE TABLE GIV3.RptFNGIConsoAgingArch
+
+			INSERT INTO GIV3.RptFNGIConsoAgingArch
+			Select * from GIV3.RptFNGIConsoAging			
+		END	
+
+
+		IF @YYYYMM = @LatestSOAMth OR @YYYYMM + '01' = DATEADD(MONTH, 1, @LatestSOAMth + '01')
+		BEGIN
+			INSERT INTO GIV3.RptFNGIConsoAging
+			Select RefNo = dtl.agent_pcode + CAST(p.soa_month AS varchar(6)),
+				p.soa_month,
+				dtl.agent_pcode,	  
+				dtl.trans_date,
+				t.type_name trans_type,
+				dtl.policy_no,
+				pol.issue_date, pol.eff_date, pol.exp_date,		
+				dtl.ph_name policy_holder,
+				ISNULL(dtl.arap_ref_no, '--') dn_cn_no,
+				dtl.prdt_code,
+				ISNULL(dtl.veh_no, '--') veh_no,
+				ISNULL(dtl.prem_amt, 0) prem,
+				ISNULL(dtl.comm_amt, 0) comm,
+				ISNULL(dtl.gst_comm_amt, 0) gst_comm,
+				ISNULL(dtl.balance, 0) balance,
+				(select ISNULL(mm.pay_mode_name,0) paymode from GIV3.t_bcp_cfg_pay_mode mm where dtl.pay_mode_id = mm.pay_mode_id) pay_mode,	
+				OSBalPolicyLevel = NULL,	
+				OSBalance = NULL, 
+				OSStatus = NULL,
+				RptInsertDate = GETDATE(),
+				RptUpdateDate = NULL,
+				RunDate = @RunDate
+			From GIV3.t_bcp_csoa_proc p 
+			INNER JOIN GIV3.t_bcp_csoa_detail dtl ON p.process_id = dtl.process_id
+			INNER JOIN GIV3.t_bcp_cfg_soa_trans_type t ON dtl.trans_type_id = t.type_id
+			LEFT OUTER JOIN GIV3.t_policy_general pol ON pol.policy_no = dtl.policy_no
+			where p.soa_month = @YYYYMM
+			and t.status = 1		
+
+			
+			IF OBJECT_ID('TempDB..#TempOffset') IS NOT NULL
+				DROP TABLE #TempOffset
+
+			
+			Select Refno, policyno, SUM(ISNULL(balance,0)) bal
+			Into #TempOffset
+			From GIV3.RptFNGIConsoAging
+			Where SOAMonth = @YYYYMM
+			and OSStatus IS NULL
+			Group by RefNo, policyno
+
+
+			--update those are offset with 0 OS balance
+			UPDATE GIV3.RptFNGIConsoAging
+			SET OSBalPolicyLevel = 0
+				, OSStatus = 'SETTLED BY OFFSET'		
+				, RptUpdateDate = GETDATE()
+				, RunDate = CASE WHEN RunDate IS NULL THEN @RunDate ELSE RunDate END
+			From GIV3.RptFNGIConsoAging c
+			INNER JOIN #TempOffset p ON c.policyno = p.policyno and c.RefNo = p.RefNo
+			where p.bal = 0
+			and c.OSStatus IS NULL;
+
+			
+			-- to update those PARTIAL offset (rebate, pol bal, etc) (over paid amt = agent's commission)
+			WITH
+				cteConsoMar (RefNo, policyno, dncnno, OSStatus, Balance, OSBalPolicyLevel, RptUpdateDate, RunDate, ROWNo)
+				AS
+				(
+					Select RefNo, policyno, dncnno
+						, OSStatus 
+						, Balance
+						, OSBalPolicyLevel		
+						, RptUpdateDate
+						, RunDate
+						, ROWNo = ROW_NUMBER () OVER (PARTITION BY RefNo, policyno ORDER BY dncnno DESC)
+					From GIV3.RptFNGIConsoAging
+					where SOAMonth = @YYYYMM
+					and transtype IN ('Endorsement', 'New Business', 'Renewal')				
+					and OSStatus IS NULL 				
+				)
+
+			UPDATE c
+			SET OSStatus = CASE WHEN p.bal < 0 THEN 'SETTLED BY OFFSET' ELSE NULL END										
+				, OSBalPolicyLevel = p.bal	
+				, RptUpdateDate = GETDATE()
+				, RunDate = CASE WHEN RunDate IS NULL THEN @RunDate ELSE RunDate END
+			From cteConsoMar c 
+			INNER JOIN #TempOffset p ON c.policyno = p.policyno and c.RefNo = p.RefNo
+			Where c.ROWNo = 1
+
+
+			-- to update payment trans with SETTLED	BY REFUND
+			UPDATE GIV3.RptFNGIConsoAging
+			SET OSStatus = 'SETTLED BY REFUND/PAYMENT'
+				, RptUpdateDate = GETDATE()
+				, RunDate = CASE WHEN RunDate IS NULL THEN @RunDate ELSE RunDate END
+			From GIV3.RptFNGIConsoAging a
+			Where EXISTS (Select 1 from GIV3.RptFNGIConsoAging x
+							Where SOAMonth = @YYYYMM
+							and x.TransType = 'Payment'
+							and a.policyno = x.policyno
+							and a.refno = x.refno) 
+			and a.OSStatus IS NULL
+
+
+			EXEC GIV3.spFNMthlyGIConsoAgingReceiptFIFOInsert @RunDate, @YYYYMM  --insert receipt and other trans type
+
+			EXEC GIV3.spFNMthlyGIConsoAgingUpdate @RunDate --update to identify OS trans
+
+		END
+	
+		COMMIT TRANSACTION	
+		
+
+	END TRY
+
+
+	BEGIN CATCH
+		SELECT ERROR_NUMBER() AS ErrorNumber			
+			, ERROR_STATE() AS ErrorState
+			, ERROR_PROCEDURE() AS ErrorProcedure
+			, ERROR_LINE() AS ErrorLine
+			, ERROR_MESSAGE() AS ErrorMessage;
+
+		
+		ROLLBACK TRANSACTION
+
+	END CATCH
+	
+
+
+END
+
+
