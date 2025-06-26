@@ -1,0 +1,429 @@
+BEGIN;
+
+SET TIMEZONE = 'Singapore';
+		
+-- Creating one temptable by union both finaltemp and final table to check whether businesskey is already present or not in final table
+
+CREATE TABLE #tempstgDimISProposalCoveredItem AS SELECT source_app_code ,source_data_set, dml_ind ,  
+case when latest_record_created_date is null then record_created_date else latest_record_created_date END AS record_created_date, 
+record_updated_date, 
+record_created_by, 
+record_updated_by, 
+record_eff_from_date, 
+CASE WHEN dml_ind <> 'D' 
+AND proposal_covered_item_uuid IS NULL THEN date_trunc(
+  'second', 
+  to_timestamp('9999-12-31', 'yyyy-MM-dd')
+) WHEN dml_ind <> 'D' 
+AND proposal_covered_item_uuid IS NOT NULL 
+AND rnk = 1 THEN date_trunc(
+  'second', 
+  to_timestamp('9999-12-31', 'yyyy-MM-dd')
+) WHEN dml_ind = 'D' then record_eff_from_date ELSE latest_record_eff_from_date END AS record_eff_to_date, 
+CASE WHEN dml_ind <> 'D' 
+AND proposal_covered_item_uuid IS NULL THEN 'Y' WHEN dml_ind <> 'D' 
+AND proposal_covered_item_uuid IS NOT NULL 
+AND rnk = 1 THEN 'Y' WHEN dml_ind = 'D' then 'N' ELSE 'N' END AS active_record_ind 
+			,checksum
+			,proposal_covered_item_uuid
+			,business_key,
+			proposal_uuid,
+			proposal_id,
+			covered_item_id,
+			covered_item_type_code,
+			submit_date,
+			data_entry_date,
+			entry_date,
+			issue_date,
+			commencement_date,
+			start_date,
+			end_date,
+			status_id,
+			source_status_code,
+			campaign_uuid,
+			product_uuid,
+			product_id,
+			premium_term,
+			coverage_duration,
+			insured_age,
+			stlt,
+			premium_type,
+			term,
+			decision,
+			sales_agent_uuid,
+			image_scan_date,
+			image_review_date,
+			submit_system_date,
+			proof_date,
+			ntu_date,
+			auto_end,
+			print_date,
+			policy_type,
+			business_type,
+			source,
+			customer_uuid,
+			policy_type_code,
+			business_type_code,
+			source_code,
+			pay_mode_id,
+			source_pay_mode,
+			proposal_no,
+			premium_mode_id,
+			premium_mode_code,
+			first_sales_agent_uuid
+			,table_type
+			,latest_record_eff_from_date
+			,rnk
+FROM 
+  (
+    SELECT 
+      temp.*, 
+      ROW_NUMBER() OVER (
+        PARTITION BY temp.proposal_covered_item_uuid 
+        ORDER BY 
+          temp.record_eff_from_date DESC
+      ) AS rnk, 
+      LAG(record_eff_from_date) OVER (
+        PARTITION BY temp.proposal_covered_item_uuid 
+        ORDER BY 
+          temp.record_eff_from_date DESC
+      ) AS latest_record_eff_from_date,  
+      LEAD(record_created_date) OVER (
+        PARTITION BY business_key 
+        ORDER BY 
+          record_eff_from_date DESC
+      ) AS latest_record_created_date 
+    FROM 
+      (
+        SELECT 
+					  source_app_code, 
+					  source_data_set, 
+					  dml_ind, 
+					  record_created_date, 
+					  record_updated_date, 
+					  record_created_by, 
+					  record_updated_by, 
+					  record_eff_from_date, 
+					  record_eff_to_date, 
+					  active_record_ind, 
+					  proposal_covered_item_uuid, 
+					  business_key,
+					  proposal_uuid,
+						proposal_id,
+						covered_item_id,
+						covered_item_type_code,
+						submit_date,
+						data_entry_date,
+						entry_date,
+						issue_date,
+						commencement_date,
+						start_date,
+						end_date,
+						status_id,
+						source_status_code,
+						campaign_uuid,
+						product_uuid,
+						product_id,
+						premium_term,
+						coverage_duration,
+						insured_age,
+						stlt,
+						premium_type,
+						term,
+						decision,
+						sales_agent_uuid,
+						image_scan_date,
+						image_review_date,
+						submit_system_date,
+						proof_date,
+						ntu_date,
+						auto_end,
+						print_date,
+						policy_type,
+						business_type,
+						source,
+						customer_uuid,
+						policy_type_code,
+						business_type_code,
+						source_code,
+						pay_mode_id,
+						source_pay_mode,
+						proposal_no,
+						premium_mode_id,
+						premium_mode_code,
+						first_sales_agent_uuid
+						,checksum
+    					,'TEMP' as table_type 
+        FROM 
+          el_eds_def_stg.stgDimProposalCoveredItem 
+        UNION 
+          (
+            SELECT 
+              source_app_code, 
+              source_data_set, 
+              dml_ind, 
+              record_created_date, 
+              record_updated_date, 
+              record_created_by, 
+              record_updated_by, 
+              record_eff_from_date, 
+              record_eff_to_date, 
+              active_record_ind, 
+              proposal_covered_item_uuid, 
+              business_key,
+             proposal_uuid,
+				proposal_id,
+				covered_item_id,
+				covered_item_type_code,
+				submit_date,
+				data_entry_date,
+				entry_date,
+				issue_date,
+				commencement_date,
+				start_date,
+				end_date,
+				status_id,
+				source_status_code,
+				campaign_uuid,
+				product_uuid,
+				product_id,
+				premium_term,
+				coverage_duration,
+				insured_age,
+				stlt,
+				premium_type,
+				term,
+				decision,
+				sales_agent_uuid,
+				image_scan_date,
+				image_review_date,
+				submit_system_date,
+				proof_date,
+				ntu_date,
+				auto_end,
+				print_date,
+				policy_type,
+				business_type,
+				source,
+				customer_uuid,
+				policy_type_code,
+				business_type_code,
+				source_code,
+				pay_mode_id,
+				source_pay_mode,
+				proposal_no,
+				premium_mode_id,
+				premium_mode_code,
+				first_sales_agent_uuid
+								,checksum
+    							,'HIST' as table_type 
+            FROM 
+              el_eds_def.DimProposalCoveredItem b 
+            where 
+              b.business_key in (
+                SELECT 
+                  business_key 
+                FROM 
+                  el_eds_def_stg.stgDimProposalCoveredItem a 
+                where 
+                  a.record_eff_from_date <> b.record_eff_from_date
+              ) 
+              AND b.active_record_ind = 'Y' 
+              and b.source_app_code = 'ISIS'
+          )
+      ) temp
+  ) temp;
+					
+
+
+--Merging the temp table with final table
+				 
+MERGE INTO el_eds_def.DimProposalCoveredItem  
+USING #tempstgDimISProposalCoveredItem temp ON el_eds_def.DimProposalCoveredItem.business_key = temp.business_key 
+AND el_eds_def.DimProposalCoveredItem.record_eff_from_date= temp.record_eff_from_date and el_eds_def.DimProposalCoveredItem.source_app_code='ISIS'
+WHEN MATCHED 
+THEN UPDATE	
+        set
+		record_updated_date= temp.record_updated_date
+		,record_eff_to_date = case WHEN el_eds_def.DimProposalCoveredItem.active_record_ind = 'Y' AND temp.rnk != 1 then temp.latest_record_eff_from_date else el_eds_def.DimProposalCoveredItem.record_eff_to_date END
+		,active_record_ind = case WHEN el_eds_def.DimProposalCoveredItem.active_record_ind = 'Y' AND temp.rnk != 1 then temp.active_record_ind else el_eds_def.DimProposalCoveredItem.active_record_ind END
+		,proposal_uuid =temp.proposal_uuid
+		,proposal_id =temp.proposal_id
+		,covered_item_id =temp.covered_item_id
+		,covered_item_type_code =temp.covered_item_type_code
+		,submit_date =temp.submit_date
+		,data_entry_date =temp.data_entry_date
+		,entry_date =temp.entry_date
+		,issue_date =temp.issue_date
+		,commencement_date =temp.commencement_date
+		,start_date =temp.start_date
+		,end_date =temp.end_date
+		,status_id =temp.status_id
+		,source_status_code =temp.source_status_code
+		,campaign_uuid =temp.campaign_uuid
+		,product_uuid =temp.product_uuid
+		,product_id =temp.product_id
+		,premium_term =temp.premium_term
+		,coverage_duration =temp.coverage_duration
+		,insured_age =temp.insured_age
+		,stlt =temp.stlt
+		,premium_type =temp.premium_type
+		,term =temp.term
+		,decision =temp.decision
+		,sales_agent_uuid =temp.sales_agent_uuid
+		,image_scan_date =temp.image_scan_date
+		,image_review_date =temp.image_review_date
+		,submit_system_date =temp.submit_system_date
+		,proof_date =temp.proof_date
+		,ntu_date =temp.ntu_date
+		,auto_end =temp.auto_end
+		,print_date =temp.print_date
+		,policy_type =temp.policy_type
+		,business_type =temp.business_type
+		,source =temp.source
+		,customer_uuid =temp.customer_uuid
+		,policy_type_code =temp.policy_type_code
+		,business_type_code =temp.business_type_code
+		,source_code =temp.source_code
+		,pay_mode_id =temp.pay_mode_id
+		,source_pay_mode =temp.source_pay_mode
+		,proposal_no =temp.proposal_no
+		,premium_mode_id =temp.premium_mode_id
+		,premium_mode_code =temp.premium_mode_code
+		,first_sales_agent_uuid =temp.first_sales_agent_uuid
+,checksum = temp.checksum
+WHEN NOT MATCHED 
+THEN INSERT (source_app_code
+		        ,source_data_set 
+		        ,dml_ind 
+		        ,record_created_date
+		        ,record_updated_date
+		        ,record_created_by 
+		        ,record_updated_by 
+		        ,record_eff_from_date
+		        ,record_eff_to_date
+		        ,active_record_ind
+				,proposal_covered_item_uuid
+                ,business_key
+                ,proposal_uuid
+                ,proposal_id
+                ,covered_item_id
+                ,covered_item_type_code
+                ,submit_date
+                ,data_entry_date
+                ,entry_date
+                ,issue_date
+                ,commencement_date
+                ,start_date
+                ,end_date
+                ,status_id
+                ,source_status_code
+                ,campaign_uuid
+                ,product_uuid
+                ,product_id
+                ,premium_term
+                ,coverage_duration
+                ,insured_age
+                ,stlt
+                ,premium_type
+                ,term
+                ,decision
+                ,sales_agent_uuid
+                ,image_scan_date
+                ,image_review_date
+                ,submit_system_date
+                ,proof_date
+                ,ntu_date
+                ,auto_end
+                ,print_date
+                ,policy_type
+                ,business_type
+                ,source
+                ,customer_uuid
+                ,policy_type_code
+                ,business_type_code
+                ,source_code
+                ,pay_mode_id
+                ,source_pay_mode
+                ,proposal_no
+                ,premium_mode_id
+                ,premium_mode_code
+                ,first_sales_agent_uuid
+                ,checksum   
+                 )
+VALUES(temp.source_app_code,
+                 temp.source_data_set,
+                 temp.dml_ind,
+                 temp.record_created_date,
+                 temp.record_updated_date,
+                 temp.record_created_by,
+                 temp.record_updated_by,
+                 temp.record_eff_from_date,
+                 temp.record_eff_to_date,
+                 temp.active_record_ind,
+                temp.proposal_covered_item_uuid
+                 ,temp.business_key
+                 ,temp.proposal_uuid
+                 ,temp.proposal_id
+                 ,temp.covered_item_id
+                 ,temp.covered_item_type_code
+                 ,temp.submit_date
+                 ,temp.data_entry_date
+                 ,temp.entry_date
+                 ,temp.issue_date
+                 ,temp.commencement_date
+                 ,temp.start_date
+                 ,temp.end_date
+                 ,temp.status_id
+                 ,temp.source_status_code
+                 ,temp.campaign_uuid
+                 ,temp.product_uuid
+                 ,temp.product_id
+                 ,temp.premium_term
+                 ,temp.coverage_duration
+                 ,temp.insured_age
+                 ,temp.stlt
+                 ,temp.premium_type
+                 ,temp.term
+                 ,temp.decision
+                 ,temp.sales_agent_uuid
+                 ,temp.image_scan_date
+                 ,temp.image_review_date
+                 ,temp.submit_system_date
+                 ,temp.proof_date
+                 ,temp.ntu_date
+                 ,temp.auto_end
+                 ,temp.print_date
+                 ,temp.policy_type
+                 ,temp.business_type
+                 ,temp.source
+                 ,temp.customer_uuid
+                 ,temp.policy_type_code
+                 ,temp.business_type_code
+                 ,temp.source_code
+                 ,temp.pay_mode_id
+                 ,temp.source_pay_mode
+                 ,temp.proposal_no
+                 ,temp.premium_mode_id
+                 ,temp.premium_mode_code
+                 ,temp.first_sales_agent_uuid
+                 ,temp.checksum
+
+);
+
+DROP TABLE IF EXISTS #tempstgDimISProposalCoveredItem ; 
+END;
+
+error=MERGE INTO el_eds_def.DimProposalCoveredItem  
+USING #tempstgDimISProposalCoveredItem temp ON el_eds_d...
+
+ERROR: Found multiple matches to update the same tuple.
+  Detail: 
+  -----------------------------------------------
+  error:  Found multiple matches to update the same tuple.
+  code:      8001
+  context:   
+  query:     36601326
+  location:  _rds_bin_padb.1.0.115140_data_exec_124_1461249404_26bbee4cd566a757f84c54e840edd329c626b57e_0.cpp:1190
+  process:   query0_184_36601326 [pid=25137]
+  --------------------------------------------- find the error in script and fix it 
